@@ -20,19 +20,31 @@ class LibratoMetricsReporterTest < Test::Unit::TestCase
     @registry.stop
   end
 
-  def test_write
+  def populate_registry
     @registry.meter('meter.testing').mark
     @registry.counter('counter.testing').increment
     @registry.timer('timer.testing').update(1.5)
     @registry.histogram('histogram.testing').update(1.5)
     @registry.utilization_timer('utilization_timer.testing').update(1.5)
     @registry.gauge('gauge.testing') { 123 }
+  end
+
+  def test_write
+    populate_registry
 
     @reporter.expects(:submit).with do |data|
       data.detect { |(k,v)| k =~ /gauges\[\d+\]\[name\]/ && v == 'gauge.testing' } &&
       data.detect { |(k,v)| k =~ /gauges\[\d+\]\[value\]/ && v.to_s == '123' }
     end
 
+    @reporter.write
+  end
+
+  def test_chunked_write
+    populate_registry
+    @reporter = build_reporter(:max_chunk => 1)
+
+    @reporter.expects(:submit).at_least(2)
     @reporter.write
   end
 

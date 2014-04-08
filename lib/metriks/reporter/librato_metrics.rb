@@ -16,6 +16,7 @@ module Metriks::Reporter
       @registry     = options[:registry] || Metriks::Registry.default
       @time_tracker = Metriks::TimeTracker.new(options[:interval] || 60)
       @on_error     = options[:on_error] || proc { |ex| }
+      @max_chunk    = options[:max_chunk] || 500
     end
 
     def start
@@ -70,9 +71,18 @@ module Metriks::Reporter
 
       enumerator = Metriks::Reporter::FlatteningRegistryEnumerator.new(@registry)
 
+      data_holder = []
       data = {}
+      idx_mod = 0
 
       enumerator.each_with_index do |(name, value, klass), idx|
+        idx_mod = idx % @max_chunk
+
+        if idx_mod == 0 && idx != 0
+          data_holder << data
+          data = {}
+        end
+
         if prefix
           name = "#{prefix}.#{name}"
         end
@@ -83,7 +93,12 @@ module Metriks::Reporter
         data["gauges[#{idx}][value]"] = value
       end
 
-      submit(data) unless data.empty?
+      data_holder << data
+
+      data_holder.each do |chunked_data|
+        submit(chunked_data) unless chunked_data.empty?
+      end
+
     end
   end
 end
